@@ -1,42 +1,42 @@
-# Reliability and trade-offs
+# Надёжность и архитектурные компромиссы
 
-The public SDK is designed to fail in predictable ways instead of hiding problems behind unlimited queues or retries.
+Публичный SDK спроектирован так, чтобы ошибки происходили предсказуемо, а не скрывались за бесконечными очередями или бесконечными повторными попытками.
 
-## Current safeguards
+## Текущие механизмы защиты
 
-- bounded in-memory queue;
-- finite retry attempts with backoff;
-- request-size limits;
-- graceful shutdown with a finite wait;
-- automated tests for batching, retries, queue pressure and shutdown;
-- CI checks for linting, formatting, tests, coverage and package build.
+- ограниченная очередь в памяти;
+- конечное число повторных попыток с backoff;
+- ограничение размера запроса;
+- корректное завершение работы с ограниченным временем ожидания;
+- автоматические тесты батчинга, повторов, переполнения очереди и завершения работы;
+- CI-проверки линтинга, форматирования, тестов, покрытия и сборки пакета.
 
-## Failure behavior
+## Поведение при сбоях
 
-| Scenario | Behavior |
+| Сценарий | Поведение |
 | --- | --- |
-| Temporary network failure | Retry |
-| HTTP 429 | Retry after the requested delay when available |
-| Temporary server failure | Retry |
-| Permanent client error | Do not retry forever |
-| Queue saturation | Drop the new analytics event rather than block the host bot indefinitely |
-| Graceful shutdown | Attempt to flush queued events for a bounded time |
-| Hard process termination | Unsent in-memory events may be lost |
+| Временная сетевая ошибка | Выполнить повторную попытку |
+| HTTP 429 | Повторить после указанной задержки, если она передана |
+| Временная серверная ошибка | Выполнить повторную попытку |
+| Постоянная клиентская ошибка | Не повторять запрос бесконечно |
+| Переполнение очереди | Отбросить новое аналитическое событие, а не блокировать основной бот |
+| Корректное завершение приложения | Попытаться отправить накопленные события за ограниченное время |
+| Аварийное завершение процесса | Неотправленные события из памяти могут быть потеряны |
 
-## Delivery semantics
+## Семантика доставки
 
-The SDK is intentionally best-effort. It does not claim durable or exactly-once delivery.
+SDK намеренно использует best-effort доставку. Он не заявляет durable или exactly-once семантику.
 
-That choice keeps integration simple and protects the host Telegram bot from analytics-side failures.
+Такой выбор сохраняет простоту интеграции и защищает основной Telegram-бот от проблем на стороне аналитики.
 
-## Possible future evolution
+## Возможное развитие архитектуры
 
-The following are design directions, not features claimed to be running today:
+Ниже перечислены возможные направления развития, а не функции, которые уже заявлены как работающие в production:
 
-- durable queueing when loss tolerance becomes stricter;
-- independent horizontal scaling of ingestion;
-- end-to-end delivery metrics and alerting;
-- idempotency or deduplication where business semantics require stronger guarantees;
-- distributed tracing for ingestion diagnostics.
+- надёжная очередь при более строгих требованиях к допустимой потере событий;
+- независимое горизонтальное масштабирование ingestion-контура;
+- сквозные метрики доставки и алертинг;
+- идемпотентность или дедупликация там, где бизнес-семантика требует более строгих гарантий;
+- distributed tracing для диагностики пути доставки событий.
 
-The key principle is to add this complexity only when real load or reliability requirements justify it.
+Ключевой принцип — добавлять такую сложность только тогда, когда её оправдывают реальная нагрузка или требования к надёжности.
