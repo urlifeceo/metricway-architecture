@@ -1,24 +1,24 @@
-# System architecture
+# Архитектура системы
 
-## Two traffic paths
+## Два контура трафика
 
-MetricWay can be understood as two separate flows:
+MetricWay можно рассматривать как два отдельных потока:
 
-1. **event ingestion** — Telegram bot → Python SDK → ingestion service → analytics storage;
-2. **product access** — dashboard/client → management API → analytics data.
+1. **приём событий** — Telegram-бот → Python SDK → сервис приёма событий → аналитическое хранилище;
+2. **работа с продуктом** — dashboard/клиент → API управления → аналитические данные.
 
 ```mermaid
 flowchart TB
-    subgraph BotProcess[Telegram bot process]
-        H[Bot handlers]
+    subgraph BotProcess[Процесс Telegram-бота]
+        H[Обработчики бота]
         SDK[MetricWay SDK]
-        Q[Bounded queue]
-        W[Async delivery worker]
+        Q[Ограниченная очередь]
+        W[Фоновый worker доставки]
         H --> SDK --> Q --> W
     end
 
-    subgraph Platform[MetricWay platform]
-        ING[Ingestion service]
+    subgraph Platform[Платформа MetricWay]
+        ING[Сервис приёма событий]
         DB[(ClickHouse)]
         API[FastAPI management / analytics API]
         UI[Dashboard]
@@ -27,49 +27,49 @@ flowchart TB
         UI --> API
     end
 
-    W -->|HTTP batches| ING
+    W -->|HTTP-батчи| ING
 ```
 
-## Why split ingestion from the main API?
+## Почему приём событий отделён от основного API?
 
-The two workloads have different characteristics.
+У этих двух типов нагрузки разные характеристики.
 
-The ingestion path is mostly about:
+Контур приёма событий отвечает в основном за:
 
-- accepting events cheaply;
-- handling bursts;
-- retrying temporary failures;
-- controlling batch size;
-- protecting the producer from slow downstream dependencies.
+- быстрый приём событий;
+- обработку всплесков нагрузки;
+- повторные попытки при временных сбоях;
+- контроль размера батчей;
+- защиту источника событий от медленных зависимостей ниже по цепочке.
 
-The management API is mostly about:
+API управления отвечает в основном за:
 
-- authentication;
-- projects and configuration;
-- analytics queries;
-- dashboard-facing request/response flows.
+- аутентификацию;
+- проекты и конфигурацию;
+- аналитические запросы;
+- request/response-взаимодействие с dashboard.
 
-Keeping these responsibilities separate makes the boundaries easier to reason about and gives room for independent scaling later.
+Разделение этих зон ответственности упрощает архитектурные границы и оставляет возможность независимо масштабировать компоненты в будущем.
 
-## SDK boundary
+## Граница ответственности SDK
 
-The SDK deliberately does not perform a network request inside every tracked event call.
+SDK намеренно не выполняет сетевой запрос при каждом вызове отправки события.
 
-Instead, it:
+Вместо этого он:
 
-1. validates and serializes the event;
-2. places it into a bounded in-memory queue;
-3. returns control to the bot;
-4. delivers queued events in the background.
+1. валидирует и сериализует событие;
+2. помещает его в ограниченную очередь в памяти;
+3. сразу возвращает управление боту;
+4. отправляет накопленные события в фоне.
 
-This keeps analytics instrumentation from dominating bot-handler latency.
+Так аналитика оказывает минимальное влияние на задержку обработчиков бота.
 
-## Storage choice
+## Выбор хранилища
 
-ClickHouse is used for analytics because the workload is naturally event-oriented and read through aggregations over time.
+ClickHouse используется для аналитики, потому что нагрузка имеет событийный характер и предполагает агрегации данных во времени.
 
-The public case study does not document private schemas or operational credentials. The important architectural property is that ingestion is batch-oriented and storage is optimized for analytical queries.
+Публичный архитектурный разбор не содержит приватных схем и рабочих учётных данных. Главное архитектурное свойство — приём данных построен вокруг батчей, а хранилище ориентировано на аналитические запросы.
 
-## Deployment model
+## Модель развёртывания
 
-The application is containerized with Docker. The public architecture focuses on service boundaries rather than production hostnames, internal ports or deployment secrets.
+Приложение контейнеризовано с помощью Docker. В публичном описании акцент сделан на границах сервисов, а не на production-hostname, внутренних портах или секретах инфраструктуры.
