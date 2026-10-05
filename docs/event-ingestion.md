@@ -1,60 +1,60 @@
-# Event ingestion
+# Приём событий
 
-## Flow
+## Поток данных
 
 ```mermaid
 sequenceDiagram
-    participant Bot as Telegram bot
+    participant Bot as Telegram-бот
     participant SDK as Python SDK
-    participant Queue as Local queue
-    participant Ingest as Ingestion service
-    participant Store as Analytics storage
+    participant Queue as Локальная очередь
+    participant Ingest as Сервис приёма событий
+    participant Store as Аналитическое хранилище
 
     Bot->>SDK: track_event(...)
-    SDK->>Queue: enqueue
-    SDK-->>Bot: return
+    SDK->>Queue: добавить событие
+    SDK-->>Bot: вернуть управление
 
-    loop background delivery
-        SDK->>Queue: build batch
-        SDK->>Ingest: send batch
-        Ingest->>Store: persist events
-        Ingest-->>SDK: result
+    loop фоновая доставка
+        SDK->>Queue: сформировать батч
+        SDK->>Ingest: отправить батч
+        Ingest->>Store: сохранить события
+        Ingest-->>SDK: результат
     end
 ```
 
-## Batching
+## Батчинг
 
-Sending every analytics event as its own HTTP request creates unnecessary overhead.
+Отправка каждого аналитического события отдельным HTTP-запросом создаёт лишние накладные расходы.
 
-The SDK therefore groups records into batches before delivery. It also limits request size so a large payload cannot grow without bound.
+Поэтому SDK группирует записи в батчи перед отправкой. Размер запроса также ограничен, чтобы крупный payload не мог бесконтрольно увеличивать объём данных.
 
-## Retry behavior
+## Повторные попытки
 
-Temporary failures are retried with backoff.
+Временные ошибки обрабатываются повторными попытками с backoff.
 
-The current public SDK handles:
+Текущий публичный SDK обрабатывает:
 
-- network failures;
-- HTTP 429 responses;
-- server-side 5xx responses;
-- `Retry-After` where available.
+- сетевые ошибки;
+- HTTP 429;
+- серверные ошибки 5xx;
+- `Retry-After`, если он передан сервером.
 
-Permanent client-side errors are not retried indefinitely.
+Постоянные клиентские ошибки не повторяются бесконечно.
 
 ## Backpressure
 
-The SDK uses a bounded queue.
+SDK использует ограниченную очередь.
 
-If the producer creates events faster than they can be delivered for long enough, the queue can fill. In that case, analytics events may be dropped rather than blocking the host bot forever.
+Если источник долго создаёт события быстрее, чем система успевает их отправлять, очередь может заполниться. В этом случае отдельные аналитические события могут быть отброшены вместо бесконечной блокировки основного Telegram-бота.
 
-This is a deliberate trade-off:
+Это осознанный компромисс:
 
-> product availability is more important than perfect analytics completeness.
+> доступность основного продукта важнее абсолютной полноты аналитики.
 
-## Delivery semantics
+## Семантика доставки
 
-The SDK is best-effort, not a durable message broker.
+SDK работает по модели best-effort и не является надёжным брокером сообщений.
 
-Because the queue is in memory, an abrupt process termination can lose unsent events. That limitation is documented rather than hidden behind an "exactly once" claim.
+Так как очередь находится в памяти, при аварийном завершении процесса часть неотправленных событий может быть потеряна. Это ограничение явно документируется, а не скрывается за обещанием «exactly once».
 
-If delivery guarantees become stricter in the future, a durable local or external queue would be the natural next architectural step.
+Если в будущем требования к гарантии доставки станут строже, следующим логичным архитектурным шагом будет надёжная локальная или внешняя очередь.
