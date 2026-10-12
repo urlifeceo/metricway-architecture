@@ -1,69 +1,77 @@
-# MetricWay — архитектурный разбор
+# MetricWay Architecture Case Study
 
-Публичный разбор архитектуры **MetricWay** — платформы продуктовой аналитики для Telegram-ботов.
+A public architecture overview of **MetricWay**, a product analytics platform for Telegram bots.
 
-Основной репозиторий приложения закрыт. В этом репозитории **нет production-кода, учётных данных, внутренних endpoint'ов, инфраструктурных секретов или пользовательских данных**. Здесь описаны архитектура системы и инженерные компромиссы на высоком уровне.
+The application repository is private. This repository documents the system architecture and engineering trade-offs at a high level. It contains no production application code, credentials, internal endpoints, infrastructure secrets, or user data.
 
-## Упрощённая архитектура
+## System overview
 
 ```mermaid
 flowchart LR
-    BOT[Telegram-бот]
+    BOT[Telegram bot]
     SDK[MetricWay Python SDK]
-    INGEST[Сервис приёма событий]
-    ANALYTICS[(Хранилище аналитики)]
+    INGEST[Event ingestion service]
+    ANALYTICS[(Analytics storage)]
     API[Management / Analytics API]
     UI[Dashboard]
 
     BOT --> SDK
-    SDK -->|батчи событий| INGEST
+    SDK -->|Event batches| INGEST
     INGEST --> ANALYTICS
     UI --> API
     API --> ANALYTICS
 ```
 
-Контур приёма событий отделён от пользовательского API. Благодаря этому сбор аналитики не зависит напрямую от нагрузки dashboard'а, а оба направления можно развивать независимо под разные типы нагрузки.
+Event ingestion is separate from the user-facing API. This reduces coupling between event collection and dashboard traffic, allowing the two paths to evolve independently for different workloads.
 
-## Публичный SDK
+## Public SDK
 
-Открытый [metricway-sdk](https://github.com/urlifeceo/metricway-sdk) — асинхронная Python-библиотека для Telegram-ботов.
+The open-source [metricway-sdk](https://github.com/urlifeceo/metricway-sdk) is an asynchronous Python library for Telegram bots. It provides:
 
-В SDK реализованы:
+- Non-blocking event collection.
+- A bounded in-memory queue.
+- Background batch delivery.
+- Retries with backoff for temporary failures.
+- Graceful shutdown with a time limit.
+- Optional aiogram 3 integration.
+- Automated tests and CI.
 
-- неблокирующий сбор событий;
-- ограниченная очередь в памяти;
-- фоновая отправка батчей;
-- повторы с backoff при временных ошибках;
-- корректное завершение работы;
-- опциональная интеграция с aiogram 3;
-- автоматические тесты и CI.
+For installation and a runnable integration example, see the [SDK README](https://github.com/urlifeceo/metricway-sdk#readme).
 
-## Инженерные решения
+## Engineering decisions
 
-### Отдельный сервис приёма событий
+### Separate event ingestion service
 
-Аналитические события приходят постоянно и создают в основном write-нагрузку, в то время как dashboard API работает в классическом request/response режиме. Отдельный ingestion-контур уменьшает связанность и позволяет независимо настраивать ограничения, надёжность и масштабирование.
+Analytics events primarily create a write-heavy workload, while the dashboard API follows a request/response model. A separate ingestion service allows limits, reliability behavior, and scaling to be configured independently.
 
-### Аналитика не должна ломать основной бот
+### Analytics should not interrupt the bot
 
-Сбой аналитики не должен останавливать бизнес-логику Telegram-бота. Поэтому SDK использует best-effort доставку и выносит сетевые запросы из обработчиков событий.
+Analytics failures should not stop the Telegram bot's business logic. The SDK therefore uses best-effort delivery and keeps network requests outside bot handlers.
 
-### Явные ограничения вместо бесконечных очередей
+### Explicit resource limits
 
-Размер очереди, батчей, число повторных попыток и время завершения ограничены. При перегрузке система ведёт себя предсказуемо и не маскирует проблему бесконечным накоплением данных.
+Queue size, batch size, retry count, and shutdown time are bounded. Under overload, the SDK has defined behavior instead of accumulating data indefinitely. Events can be lost when the queue is full, retries are exhausted, or the process exits.
 
-### Хранилище под аналитическую нагрузку
+### Storage for analytical workloads
 
-MetricWay использует ClickHouse для аналитических данных. Отправка строится батчами, а не отдельным сетевым и database round trip на каждое событие.
+MetricWay uses ClickHouse for analytics data. Events are sent in batches, reducing the need for a separate network and database round trip for every event.
 
-## Подробнее
+## Reading guide
 
-- [Архитектура системы](docs/architecture.md)
-- [Приём событий](docs/event-ingestion.md)
-- [Надёжность и компромиссы](docs/reliability.md)
+The detailed documents below are currently in Russian:
 
-## Стек проекта
+| Document | Topics |
+| --- | --- |
+| [System architecture](docs/architecture.md) | Components, responsibilities, and data flow |
+| [Event ingestion](docs/event-ingestion.md) | Collection, batching, and delivery |
+| [Reliability and trade-offs](docs/reliability.md) | Failure handling and delivery limits |
+
+This is a documentation repository; there is no application to install or run here.
+
+## Technology stack
 
 `Python` · `asyncio` · `FastAPI` · `Go` · `Fiber` · `ClickHouse` · `Docker` · `pytest` · `GitHub Actions`
 
-Этот репозиторий — **архитектурный case study**, а не зеркало приватного production-репозитория.
+## Contributing
+
+When updating the case study, keep descriptions consistent with the public SDK and check that diagrams and relative links still render correctly. Keep examples free of credentials and user data.
